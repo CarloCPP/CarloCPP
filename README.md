@@ -7,7 +7,7 @@
 
 ```text
 ┌────────────────────────────────────────────────────────┐
-│  OPERATOR: Carlo Chio (@CarloCPP) • HKUST              │
+│  OPERATOR: Carlo (@CarloCPP)                           │
 │  LOCATION: Hong Kong (Victoria Harbour Coordinates)    │
 │  GRID: [STATUS: ONLINE] • [SYSTEM: 100% SELF-CONTAINED] │
 └────────────────────────────────────────────────────────┘
@@ -72,8 +72,8 @@ ENVIRONMENT • macOS • Linux • Zsh • Neovim • Git
 ```python
 class Architect:
     def __init__(self):
-        self.name = "Carlo Chio"
-        self.base = "The Hong Kong University of Science and Technology (HKUST)"
+        self.handle = "@CarloCPP"
+        self.role = "Systems & Autonomous Agent Developer"
         self.interests = [
             "Autonomous Agents & Orchestration",
             "High-Performance System Architecture",
