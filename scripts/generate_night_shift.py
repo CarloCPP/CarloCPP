@@ -1,75 +1,112 @@
 #!/usr/bin/env python3
 """
 generate_night_shift.py
-Generates a curated, deterministic telemetry log stream for Carlo's GitHub profile.
-Guarantees 100% privacy: zero private repo inspection, zero network calls, zero token leakage.
+Generates a curated, deterministic telemetry vignette for Carlo's GitHub profile.
+Guarantees:
+- Zero private repo queries or network access
+- Fail-closed: invalid markers or state will abort without modifying README
+- Atomic file replacement
+- Mobile-friendly width (< 48 chars)
 """
 
 import os
 import random
+import sys
+import tempfile
 from datetime import datetime, timezone, timedelta
 
 # Hong Kong Time (UTC+8)
 HKT = timezone(timedelta(hours=8))
-now = datetime.now(HKT)
 
-SUBSYSTEMS = [
-    ("[Fairy-Core]", "Automated multi-account failover check", "[PASS] 0-downtime"),
-    ("[Fairy-Core]", "Routine health probe across local nodes", "[HEALTHY] 200 OK"),
-    ("[Astra-Oracle]", "Static analysis & boundary gate review", "[VERIFIED] clean"),
-    ("[Astra-Oracle]", "Architectural dependency tree audit", "[APPROVED] zero-leak"),
-    ("[System-CI]", "End-to-end sandbox pipeline dry-run", "[OK] 16/16 passed"),
-    ("[System-CI]", "Hermetic environment container lint", "[PASS] exit 0"),
-    ("[Librarian]", "Compact memory indexes & state sync", "[COMMITTED]"),
-    ("[Librarian]", "Prune stale vector embeddings cache", "[OPTIMIZED] -12MB"),
-    ("[Sentinel-Bot]", "Zero-port tunnel heartbeat validation", "[HEALTHY] 200 OK"),
-    ("[Sentinel-Bot]", "Tailscale egress latency benchmark", "[LOW-LATENCY] 18ms"),
-    ("[Builder]", "Nightly build matrix: arm64/Darwin pass", "[SUCCESS] v1.4.2"),
-    ("[Janitor]", "Garbage collect dead sockets & temp spool", "[CLEANED] 0 errors"),
+# Generic, abstract engineering vignettes without internal architecture fingerprints
+CATALOG = [
+    ("[Coordinator]", "Task routing vignette", "[DISPATCHED]"),
+    ("[Coordinator]", "Node health-probe cycle", "[HEALTHY]"),
+    ("[Builder]",     "Hermetic sandbox dry-run", "[COMPLETED]"),
+    ("[Builder]",     "Nightly build validation", "[PASSED]"),
+    ("[Reviewer]",    "Boundary static analysis", "[VERIFIED]"),
+    ("[Reviewer]",    "Schema consistency check", "[CLEAN]"),
+    ("[Indexer]",     "Vector storage maintenance", "[OPTIMIZED]"),
+    ("[Indexer]",     "State snapshot synchronization", "[COMMITTED]"),
+    ("[Sentinel]",    "Heartbeat validation check", "[HEALTHY]"),
+    ("[Sentinel]",    "Network ingress latency check", "[NOMINAL]"),
+    ("[Janitor]",     "Stale cache cleanup run", "[PRUNED]"),
+    ("[Janitor]",     "Temp buffer reconciliation", "[COMPLETED]"),
 ]
 
-def generate_log_stream():
-    # Pick 5 distinct events
-    selected = random.sample(SUBSYSTEMS, 5)
+def generate_log_stream(reference_time=None):
+    if reference_time is None:
+        reference_time = datetime.now(HKT)
+
+    selected = random.sample(CATALOG, 5)
     
-    # Generate realistic timestamps in chronological order over the last few hours
-    base_minutes = random.randint(10, 50)
+    gen_time_str = reference_time.strftime("%Y-%m-%d %H:%M HKT")
     lines = [
-        "TIMESTAMP (HKT)   SUBSYSTEM        EVENT & PIPELINE ACTION               STATUS",
-        "───────────────────────────────────────────────────────────────────────────────"
+        "[THE NIGHT SHIFT / SYNTHETIC LOG]",
+        f"Generated: {gen_time_str}",
+        ""
     ]
     
-    current_time = now - timedelta(hours=2)
-    for subsystem, event, status in selected:
-        current_time += timedelta(minutes=random.randint(8, 25), seconds=random.randint(5, 55))
-        time_str = current_time.strftime("%H:%M:%S")
-        lines.append(f"{time_str:<17} {subsystem:<16} {event:<37} {status}")
+    # 5 steps backwards from reference_time to ensure all events are strictly in the past
+    # Events between 110 mins ago and 10 mins ago
+    offsets = sorted(random.sample(range(10, 115), 5), reverse=True)
     
+    for (role, action, status), offset in zip(selected, offsets):
+        event_time = reference_time - timedelta(minutes=offset)
+        time_str = event_time.strftime("%H:%M")
+        lines.append(f"{time_str}  {role:<15} {action}")
+        lines.append(f"       → Status: {status}")
+        
     return "\n".join(lines)
 
-def update_readme(log_stream):
-    readme_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "README.md")
+def update_readme(readme_path, log_stream):
+    if not os.path.isabs(readme_path):
+        readme_path = os.path.abspath(readme_path)
+
     if not os.path.exists(readme_path):
-        readme_path = "README.md"
-        
+        raise FileNotFoundError(f"Target README not found: {readme_path}")
+
     with open(readme_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     start_marker = "<!-- NIGHT_SHIFT_START -->"
     end_marker = "<!-- NIGHT_SHIFT_END -->"
 
-    if start_marker not in content or end_marker not in content:
-        raise ValueError("Missing markers in README.md")
+    # Fail-closed validations
+    start_count = content.count(start_marker)
+    end_count = content.count(end_marker)
 
-    prefix = content.split(start_marker)[0] + start_marker + "\n```text\n"
-    suffix = "\n```\n" + end_marker + content.split(end_marker)[1]
+    if start_count != 1:
+        raise ValueError(f"Expected exactly 1 '{start_marker}', found {start_count}")
+    if end_count != 1:
+        raise ValueError(f"Expected exactly 1 '{end_marker}', found {end_count}")
+
+    start_idx = content.find(start_marker)
+    end_idx = content.find(end_marker)
+
+    if start_idx >= end_idx:
+        raise ValueError("Invalid marker order: START marker appears after END marker")
+
+    prefix = content[: start_idx + len(start_marker)] + "\n```text\n"
+    suffix = "\n```\n" + content[end_idx:]
 
     new_content = prefix + log_stream + suffix
 
-    with open(readme_path, "w", encoding="utf-8") as f:
-        f.write(new_content)
+    # Atomic write via tempfile in the same directory
+    target_dir = os.path.dirname(readme_path)
+    fd, tmp_file = tempfile.mkstemp(dir=target_dir, prefix="readme_tmp_", text=True)
+    try:
+        with open(fd, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        os.replace(tmp_file, readme_path)
+    except Exception:
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
+        raise
 
 if __name__ == "__main__":
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    target_readme = os.path.join(base_dir, "README.md")
     stream = generate_log_stream()
-    update_readme(stream)
+    update_readme(target_readme, stream)
     print("Night Shift Telemetry successfully updated.")
